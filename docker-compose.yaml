@@ -1,0 +1,81 @@
+version: "3.7"
+services:
+  api:
+    build:
+      context: api
+      target: development
+    environment:
+      DB_HOST: "db"
+      DB_NAME: "docker-tutorial"
+      DB_USERNAME: "postgres"
+      DB_PASSWORD: "admin-password"
+    volumes:
+      - type: bind
+        source: "./api/src"
+        target: "/usr/src/app/src"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ui
+      target: development
+    tty: true  # react-scripts requires a TTY or else it crashes
+    volumes:
+      - type: bind
+        source: "./ui/public"
+        target: "/usr/src/app/public"
+      - type: bind
+        source: "./ui/src"
+        target: "/usr/src/app/src"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ui.rule=Host(`ui.localhost`)"
+    restart: unless-stopped
+
+  db:
+    build:
+      context: db
+    environment:
+      POSTGRES_DB: docker-tutorial
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin-password
+    volumes:
+      - type: volume
+        source: postgres
+        target: "/var/lib/postgresql/data"
+        volume:
+          nocopy: true
+      - type: bind
+        source: "./db/migrations"
+        target: "/docker-entrypoint-initdb.d/"
+        read_only: true
+    ports:
+      - 5432:5432
+    restart: unless-stopped
+
+  proxy:
+    image: traefik:v2.2
+    command:
+      - "--api.dashboard=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+    volumes:
+      - type: bind
+        source: "/var/run/docker.sock"
+        target: "/var/run/docker.sock"
+        read_only: true
+    ports:
+      - 80:80
+      - 8080:8080
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+    restart: unless-stopped
+
+volumes:
+  postgres:
